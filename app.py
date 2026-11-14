@@ -94,14 +94,14 @@ def get_track(lat, lon, start, days, step):
 
 
 @st.cache_data(show_spinner="Scanning a year of landing dates for every site…")
-def get_scan(start, use_terrain):
+def get_scan(start, use_terrain, stay_hours):
     rows = {}
     for s in get_sites().itertuples():
         if s.group != "Artemis III candidate region":   # the calendar compares Artemis III candidates
             continue
         track = get_track(float(s.lat), float(s.lon), start, SCAN_DAYS + 7, SCAN_STEP)
         mask = get_mask(s.id) if use_terrain else FLAT_MASK
-        rows[s.name] = lc.landing_scan(lc.visibility(track, mask), SCAN_STEP)
+        rows[s.name] = lc.landing_scan(lc.visibility(track, mask), SCAN_STEP, stay_hours)
     return pd.DataFrame(rows).T.iloc[:, :SCAN_DAYS]
 
 
@@ -449,13 +449,18 @@ with st.sidebar:
                       on_click=go_to_landing, args=(landed,), use_container_width=True)
     days = st.slider("Period (days)", 7, 365, 30)
     step = 1 if days <= 60 else 3
+    stay_days = st.number_input("Surface stay needing continuous sunlight (days)", 0.5, 20.0, 6.5, 0.5,
+                                help="How long your mission must stay in sunlight after landing. "
+                                     "The default, 6.5 days, is the planned Artemis III surface stay.")
+    stay_h = stay_days * 24
     use_terrain = st.checkbox("Include real terrain (LOLA)", value=True)
     with st.expander("Power assumptions"):
         panel_m2 = st.number_input("Solar panel area (m²)", 0.5, 100.0, 4.0, 0.5)
         panel_eff = st.slider("Panel efficiency (%)", 10, 40, 30) / 100
         load_w = st.number_input("Constant load (W)", 10.0, 10000.0, 150.0, 10.0)
     st.caption(f"Time step: {step} h. Horizon masks assume a 2 m high panel or antenna. "
-               "Sites: Artemis III candidate regions and past landings near the south pole.")
+                "Sites: NASA's Artemis III candidate regions (a reference set of south pole sites), "
+                "past landings, or your own coordinates.")
 
 
 # ================================================================ site helpers
@@ -508,16 +513,18 @@ for name in dict.fromkeys((name_a, name_b)):
         "site": s,
         "track": track,
         "df": df,
-        "m": lc.summarize(df, step),
-        "m_terrain": lc.summarize(terrain_df, step),
-        "m_flat": lc.summarize(flat_df, step),
+        "m": lc.summarize(df, step, stay_h),
+        "m_terrain": lc.summarize(terrain_df, step, stay_h),
+        "m_flat": lc.summarize(flat_df, step, stay_h),
         "power": lc.power_budget(df, step, panel_m2, panel_eff, load_w),
     }
 
 # ================================================================ header
 st.title("Lunar Landing Site Navigator")
-st.write("Compare power (sunlight) and direct-to-Earth communication at lunar south pole "
-         "landing sites, using real LOLA terrain. Pick two sites and a period in the sidebar.")
+st.write("Compare landing sites and dates at the lunar south pole: where the Sun and Earth sit above "
+         "the real LOLA terrain, how long each stays up, and what that means for solar power and "
+         "direct-to-Earth communication. Pick two sites, a period and your mission's surface stay "
+         "in the sidebar.")
 with st.expander("New to this? Why the lunar south pole is hard", expanded=False):
     st.markdown("""
 The Moon's axis is tilted only 1.5°, so at the south pole the Sun never climbs high. It circles
@@ -540,19 +547,20 @@ tab_cal, tab_cmp, tab_view, tab_sens = st.tabs(
 
 # ================================================================ tab 1: landing calendar
 with tab_cal:
-    st.subheader("Which Artemis III candidate site works on which day?")
-    st.caption(f"Each cell is a landing date over {SCAN_DAYS} days from the start date. "
-               "Coloured: landing that day gives 6.5 days of continuous sunlight (the planned "
-               "Artemis III surface stay), shaded by how much of the stay Earth is in view. "
-               "Grey: no landing time that day stays sunlit. The number after each site is how many days work.")
-    scan = get_scan(start, use_terrain)
+    st.subheader("Which candidate site works on which day?")
+    st.caption(f"Each cell is a landing date over {SCAN_DAYS} days from the start date, for NASA's "
+               f"Artemis III candidate regions. Coloured: landing that day gives {stay_days:g} days of "
+               "continuous sunlight (set in the sidebar; 6.5 days is the Artemis III plan), shaded by how "
+               "much of the stay Earth is in view. Grey: no landing time that day works. The number after "
+               "each site is how many days work.")
+    scan = get_scan(start, use_terrain, stay_h)
     st.plotly_chart(landing_calendar(scan), use_container_width=True)
     no_site = int(scan.isna().all(axis=0).sum())
     st.caption(f"Days when no candidate site works: {no_site} of {SCAN_DAYS}. "
                "Having several sites is what keeps every launch date usable.")
 
     st.subheader(f"Landing windows at {name_a} and {name_b}")
-    st.caption("Stretches of continuous sunlight long enough for a 6.5-day stay within the selected period. "
+    st.caption(f"Stretches of continuous sunlight long enough for a {stay_days:g}-day stay within the selected period. "
                "Landing any time between 'Land from' and 'Land by' keeps the site in sunlight for the whole "
                "stay. 'Period edge' means the stretch continues beyond the selected dates.")
     win_cols = st.columns(len(results))
@@ -561,8 +569,8 @@ with tab_cal:
         with col:
             st.markdown(f"**{name}**")
             if not wins:
-                st.write("No sunlit stretch of 6.5 days or more in this period. "
-                         "Try a longer period or another start date.")
+                st.write(f"No sunlit stretch of {stay_days:g} days or more in this period. "
+                         "Try a longer period, another start date or a shorter stay.")
                 continue
             st.dataframe(pd.DataFrame([{
                 "Land from": w["start"].strftime("%Y-%m-%d %H:%M"),
@@ -593,7 +601,7 @@ with tab_cmp:
                for _, key, fmt in rows]
         col.append(f"{len(m['mission_windows'])} window(s)")
         table[name] = col
-    labels = [label for label, _, _ in rows] + ["Sunlit stretches ≥ 6.5 days"]
+    labels = [label for label, _, _ in rows] + [f"Sunlit stretches ≥ {stay_days:g} days"]
     st.dataframe(pd.DataFrame(table, index=labels), use_container_width=True)
 
     if use_terrain:
@@ -735,7 +743,8 @@ with tab_view:
 # ================================================================ tab 4: 100 m sensitivity
 with tab_sens:
     st.subheader("How much does a 100 m landing error matter?")
-    st.caption("Artemis III aims to land within about 100 m of its target. Each circle is a point "
+    st.caption("Precision landers aim to touch down within about 100 m of their target (the Artemis III "
+               "goal). Each circle is a point "
                "100 m or 200 m from the site centre, coloured by the chosen metric over the selected "
                "period. The dotted ring marks 100 m.")
     if not use_terrain:
@@ -778,11 +787,11 @@ of NASA's LOLA average illumination maps. The IM-1 landing-site height (2,592 m)
 lander to sleep; Sun and Earth elevations at the Apollo 11 landing match the Apollo Lunar Surface
 Journal within 0.2°. Full results: docs/validation.md in the repository.
 
-**Site coordinates.** For each NASA Artemis III candidate region, the point with the highest
-long-term average illumination inside the region. Past landings use published landing
-coordinates. Chandrayaan-3 lies outside the 80 m terrain model, so its horizon uses 240 m
-terrain only and has no 100 m offset analysis. Apollo 11 lies outside the polar terrain models
-and is treated as a smooth sphere.
+**Site coordinates.** NASA's Artemis III candidate regions serve as a reference set of south pole
+sites; for each region, the point with the highest long-term average illumination inside it.
+Past landings use published landing coordinates. Chandrayaan-3 lies outside the 80 m terrain model,
+so its horizon uses 240 m terrain only and has no 100 m offset analysis. Apollo 11 lies outside
+the polar terrain models and is treated as a smooth sphere.
 
 **Custom coordinates.** Any point can be entered. Its horizon is built the same way on a
 down-sampled copy of the LOLA terrain (240 m south of 80°S, 960 m to 60°S); north of 60°S
@@ -800,6 +809,9 @@ Long-term colours use NASA's 120 m average visibility maps; the 60 m maps differ
 **Power.** Panel output = 1361 W/m² × area × efficiency × cos(solar elevation) × the visible
 fraction of the solar disc (circular segment above the local horizon). Battery size is the largest
 drop in cumulative (output − load) over the period, the standard energy-balance sizing.
+
+**Surface stay.** Landing windows and the calendar use the stay length set in the sidebar
+(default 6.5 days, the planned Artemis III stay), so other missions can use their own.
 
 **Landing error.** Horizon masks are also computed for 16 points 100 m and 200 m from each site.
 Sun and Earth directions shift by less than 0.01° over that distance, so differences come from

@@ -131,19 +131,19 @@ def moment(df, i, step_hours):
     }
 
 
-def mission_windows(df, step_hours):
-    """Sunlit stretches long enough for a 6.5-day surface stay."""
+def mission_windows(df, step_hours, stay_hours=MISSION_HOURS):
+    """Sunlit stretches long enough for a surface stay of `stay_hours` (default: Artemis III, 6.5 days)."""
     out = []
     last = len(df) - 1
     for s, n in runs(df["sun_vis"]):
         hours = n * step_hours
-        if hours < MISSION_HOURS:
+        if hours < stay_hours:
             continue
         seg = df.iloc[s:s + n]
         start = seg.index[0]
         out.append({
             "start": start,
-            "land_by": start + pd.Timedelta(hours=hours - MISSION_HOURS),
+            "land_by": start + pd.Timedelta(hours=hours - stay_hours),
             "hours": hours,
             "earth_pct": 100 * seg["earth_vis"].mean(),
             "blackout_h": longest_run_hours(~seg["earth_vis"], step_hours),
@@ -152,7 +152,7 @@ def mission_windows(df, step_hours):
     return out
 
 
-def summarize(df, step_hours):
+def summarize(df, step_hours, stay_hours=MISSION_HOURS):
     """Comparison metrics for one site over the selected period."""
     sun_now, sun_change = hours_until_change(df["sun_vis"], step_hours)
     earth_now, earth_change = hours_until_change(df["earth_vis"], step_hours)
@@ -165,7 +165,7 @@ def summarize(df, step_hours):
         "longest_dark_h": longest_run_hours(~df["sun_vis"], step_hours),
         "longest_blackout_h": longest_run_hours(~df["earth_vis"], step_hours),
         "longest_sun_h": longest_run_hours(df["sun_vis"], step_hours),
-        "mission_windows": mission_windows(df, step_hours),
+        "mission_windows": mission_windows(df, step_hours, stay_hours),
         "sun_now": sun_now,
         "sun_change_h": sun_change,
         "earth_now": earth_now,
@@ -173,14 +173,14 @@ def summarize(df, step_hours):
     }
 
 
-def landing_scan(df, step_hours):
+def landing_scan(df, step_hours, stay_hours=MISSION_HOURS):
     """Best landing option for each UTC day.
 
     For every possible landing time, checks whether the Sun stays visible for the
     whole 6.5-day stay. Returns, per day, the highest Earth-in-view percentage among
     landing times that stay sunlit (NaN if no landing time that day works).
     """
-    n = int(round(MISSION_HOURS / step_hours))
+    n = int(round(stay_hours / step_hours))
     sun = df["sun_vis"].to_numpy(dtype=int)
     earth = df["earth_vis"].to_numpy(dtype=float)
     m = len(sun) - n + 1

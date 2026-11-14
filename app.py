@@ -19,11 +19,16 @@ FLAT_MASK = pd.DataFrame({"az": np.arange(360.0), "horizon": np.zeros(360)})
 SCAN_DAYS = 365
 SCAN_STEP = 2            # hours
 VERT_EXAG = 2.0          # vertical exaggeration of the 3D terrain view
-CUSTOM_LABEL = "Custom coordinates…"
+CUSTOM_LABEL = "Custom coordinates"
+SUN_SCALE = [[0, "#16121E"], [0.1, "#1B0C41"], [0.2, "#4A0C6B"], [0.3, "#781C6D"],
+             [0.4, "#A52C60"], [0.5, "#CF4446"], [0.6, "#ED6925"], [0.7, "#FB9B06"],
+             [0.85, "#F7D13D"], [1, "#FCFFA4"]]
+EARTH_SCALE = [[0, "#0E1A2B"], [0.25, "#1F3F6B"], [0.5, "#2F6FB5"], [0.75, "#7FA8DA"], [1, "#E8F1FB"]]
 
 st.set_page_config(page_title="Lunar Landing Site Navigator", page_icon="🌗", layout="wide")
 
 
+# ================================================================ cached data
 @st.cache_resource
 def get_ephemeris():
     return lc.Ephemeris()
@@ -106,6 +111,7 @@ def fmt_hours(h):
     return f"{h / 24:.1f} days" if h >= 48 else f"{h:.0f} h"
 
 
+# ================================================================ figures
 def sky_dome(mask, df, title, show_terrain, now=None):
     """Polar sky plot. Polar sites: horizon-zoomed (centre = -10°, outward = higher).
     Sites where the Sun or Earth climbs above 30°: standard sky chart (centre = zenith)."""
@@ -139,11 +145,11 @@ def sky_dome(mask, df, title, show_terrain, now=None):
         else:
             theta, r = az, hz_r
         fig.add_trace(go.Scatterpolar(
-            theta=theta, r=r, mode="lines", fill="toself", name="Terrain",
+            theta=theta, r=r, mode="lines", fill="toself", showlegend=False,
             line=dict(color=TERRAIN, width=1.5), fillcolor="rgba(125,118,108,0.35)", hoverinfo="skip"))
     fig.add_trace(go.Scatterpolar(
-        theta=np.arange(0, 361, 5), r=np.full(73, float(to_r(0))), mode="lines",
-        name="0° (flat horizon)", line=dict(color=TERRAIN, width=1, dash="dot"), hoverinfo="skip"))
+        theta=np.arange(0, 361, 5), r=np.full(73, float(to_r(0))), mode="lines", showlegend=False,
+        line=dict(color=TERRAIN, width=1, dash="dot"), hoverinfo="skip"))
 
     styles = {"sun": (SUN, SUN_LIGHT), "earth": (EARTH, EARTH_LIGHT)}
     for body, (dark, light) in styles.items():
@@ -153,17 +159,18 @@ def sky_dome(mask, df, title, show_terrain, now=None):
         vis = df[f"{body}_vis"]
         label = body.capitalize()
         # draw blocked first so visible points sit on top
-        for sel_vis, name, c in ((~vis, f"{label} blocked", light), (vis, f"{label} visible", dark)):
+        for sel_vis, name, c, show in ((~vis, f"{label} hidden", light, False),
+                                       (vis, f"{label} path", dark, True)):
             sel = keep & sel_vis
             fig.add_trace(go.Scatterpolar(
-                theta=df.loc[sel, f"{body}_az"], r=r[sel], mode="markers", name=name,
+                theta=df.loc[sel, f"{body}_az"], r=r[sel], mode="markers", name=name, showlegend=show,
                 marker=dict(size=4, color=c),
                 customdata=df.index[sel].strftime("%Y-%m-%d %H:%M"),
                 hovertemplate="%{customdata} UTC<br>az %{theta:.1f}°<extra>" + name + "</extra>"))
 
     if now is not None:
-        for body, color, symbol, label in (("sun", SUN, "star", "Sun at chosen time"),
-                                           ("earth", EARTH, "circle", "Earth at chosen time")):
+        for body, color, symbol, label in (("sun", SUN, "star", "Sun now"),
+                                           ("earth", EARTH, "circle", "Earth now")):
             fig.add_trace(go.Scatterpolar(
                 theta=[now[f"{body}_az"]], r=[float(to_r(now[f"{body}_alt"]))], mode="markers", name=label,
                 marker=dict(size=20, color=color, symbol=symbol, line=dict(color="white", width=2)),
@@ -208,10 +215,10 @@ def panorama(mask, df, title, show_terrain, now_idx=0, max_frames=240):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=[-180, 180], y=[y_low, y_low], mode="lines",
                              line=dict(width=0), showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=az_h, y=hz, mode="lines", fill="tonexty", name="Terrain",
+    fig.add_trace(go.Scatter(x=az_h, y=hz, mode="lines", fill="tonexty", showlegend=False,
                              line=dict(color=TERRAIN, width=1.5), fillcolor="rgba(125,118,108,0.45)",
                              hovertemplate="az %{x:.0f}°<br>horizon %{y:.2f}°<extra></extra>"))
-    fig.add_trace(go.Scatter(x=[-180, 180], y=[0, 0], mode="lines", name="0° (flat horizon)",
+    fig.add_trace(go.Scatter(x=[-180, 180], y=[0, 0], mode="lines", showlegend=False,
                              line=dict(color=TERRAIN, width=1, dash="dot"), hoverinfo="skip"))
 
     styles = {"sun": (SUN, SUN_LIGHT), "earth": (EARTH, EARTH_LIGHT)}
@@ -219,11 +226,12 @@ def panorama(mask, df, title, show_terrain, now_idx=0, max_frames=240):
         vis = df[f"{body}_vis"]
         keep = df[f"{body}_alt"] >= y_low
         label = body.capitalize()
-        for sel_vis, name, c in ((~vis, f"{label} blocked", light), (vis, f"{label} visible", dark)):
+        for sel_vis, name, c, show in ((~vis, f"{label} hidden", light, False),
+                                       (vis, f"{label} path", dark, True)):
             sel = keep & sel_vis
             fig.add_trace(go.Scatter(
                 x=_wrap(df.loc[sel, f"{body}_az"]), y=df.loc[sel, f"{body}_alt"], mode="markers",
-                name=name, marker=dict(size=3, color=c),
+                name=name, showlegend=show, marker=dict(size=3, color=c),
                 customdata=df.index[sel].strftime("%Y-%m-%d %H:%M"),
                 hovertemplate="%{customdata} UTC<br>az %{x:.1f}°, alt %{y:.2f}°<extra>" + name + "</extra>"))
 
@@ -339,7 +347,7 @@ def terrain_3d(t, now, title, shadow=None, overlay=None):
     fig = go.Figure(go.Surface(
         x=e, y=n, z=z, showscale=overlay is not None, **surface,
         lighting=(dict(ambient=0.95, diffuse=0.15, roughness=1.0, specular=0.0) if overlay is not None
-            else dict(ambient=0.7, diffuse=0.4, roughness=0.9, specular=0.03)),
+                  else dict(ambient=0.7, diffuse=0.4, roughness=0.9, specular=0.03)),
         lightposition=dict(x=light[0], y=light[1], z=light[2]),
         hovertemplate="%{x:.1f} km east, %{y:.1f} km north<br>%{z:+.2f} km vs site<extra></extra>"))
     length = 7.0                                         # km
@@ -399,12 +407,12 @@ def timeline(dfa, dfb, name_a, name_b, when=None):
     if when is not None:
         fig.add_vline(x=when, line=dict(color="#1E2329", width=1.5))
     fig.update_yaxes(title_text="degrees")
-    fig.update_layout(height=520, margin=dict(l=40, r=20, t=50, b=30),
-                      legend=dict(orientation="h", y=1.08))
+    fig.update_layout(height=460, margin=dict(l=40, r=20, t=50, b=30),
+                      legend=dict(orientation="h", y=1.1))
     return fig
 
 
-# ---------------------------------------------------------------- inputs
+# ================================================================ sidebar inputs
 sites = get_sites()
 names = sites["name"].tolist()
 if "start" not in st.session_state:
@@ -450,7 +458,7 @@ with st.sidebar:
                "Sites: Artemis III candidate regions and past landings near the south pole.")
 
 
-# ---------------------------------------------------------------- site helpers
+# ================================================================ site helpers
 def site_record(name):
     if name == CUSTOM_LABEL:
         _, res = get_custom_mask(c_lat, c_lon)
@@ -488,7 +496,7 @@ def custom_uncertainty(track, lat, lon, dist=250):
     return {"sun": (a[:, 0].min(), a[:, 0].max()), "earth": (a[:, 1].min(), a[:, 1].max())}
 
 
-# ---------------------------------------------------------------- compute
+# ================================================================ compute
 results = {}
 for name in dict.fromkeys((name_a, name_b)):
     s = site_record(name)
@@ -506,10 +514,10 @@ for name in dict.fromkeys((name_a, name_b)):
         "power": lc.power_budget(df, step, panel_m2, panel_eff, load_w),
     }
 
-# ---------------------------------------------------------------- page
+# ================================================================ header
 st.title("Lunar Landing Site Navigator")
 st.write("Compare power (sunlight) and direct-to-Earth communication at lunar south pole "
-         "landing sites, using real LOLA terrain. Change the dates or sites and every number updates.")
+         "landing sites, using real LOLA terrain. Pick two sites and a period in the sidebar.")
 with st.expander("New to this? Why the lunar south pole is hard", expanded=False):
     st.markdown("""
 The Moon's axis is tilted only 1.5°, so at the south pole the Sun never climbs high. It circles
@@ -527,129 +535,164 @@ if not use_terrain:
     st.info("Terrain is off: every site is treated as a smooth sphere. "
             "Turn it back on to see what the real horizon blocks.")
 
-st.subheader("Landing calendar: which site works on which day?")
-st.caption(f"Each cell is a landing date over {SCAN_DAYS} days from the start date. "
-           "Coloured: landing that day gives 6.5 days of continuous sunlight, shaded by how much "
-           "of the stay Earth is in view. Grey: no landing time that day stays sunlit. "
-           "The number after each site is how many days work.")
-scan = get_scan(start, use_terrain)
-st.plotly_chart(landing_calendar(scan), use_container_width=True)
-no_site = int(scan.isna().all(axis=0).sum())
-st.caption(f"Days when no candidate site works: {no_site} of {SCAN_DAYS}. "
-           "Having several sites is what keeps every launch date usable.")
+tab_cal, tab_cmp, tab_view, tab_sens = st.tabs(
+    ["Landing calendar", "Compare sites", "Sun & Earth view", "100 m sensitivity"])
 
-st.subheader(f"Compare two sites: {name_a} vs {name_b}")
-rows = [
-    ("Sunlight", "sunlight_pct", "{:.1f}%"),
-    ("Highest solar elevation", "sun_elev_max", "{:.2f}°"),
-    ("Mean solar elevation while sunlit", "sun_elev_mean_up", "{:.2f}°"),
-    ("Earth in view", "earth_pct", "{:.1f}%"),
-    ("Sun and Earth together", "ops_pct", "{:.1f}%"),
-    ("Longest darkness", "longest_dark_h", None),
-    ("Longest communication blackout", "longest_blackout_h", None),
-    ("Longest continuous sunlight", "longest_sun_h", None),
-]
-table = {}
-for name, res in results.items():
-    m = res["m"]
-    col = [("—" if m[key] is None else fmt.format(m[key])) if fmt else fmt_hours(m[key])
-           for _, key, fmt in rows]
-    col.append(f"{len(m['mission_windows'])} window(s)")
-    table[name] = col
-labels = [label for label, _, _ in rows] + ["Sunlit stretches ≥ 6.5 days"]
-st.dataframe(pd.DataFrame(table, index=labels), use_container_width=True)
+# ================================================================ tab 1: landing calendar
+with tab_cal:
+    st.subheader("Which Artemis III candidate site works on which day?")
+    st.caption(f"Each cell is a landing date over {SCAN_DAYS} days from the start date. "
+               "Coloured: landing that day gives 6.5 days of continuous sunlight (the planned "
+               "Artemis III surface stay), shaded by how much of the stay Earth is in view. "
+               "Grey: no landing time that day stays sunlit. The number after each site is how many days work.")
+    scan = get_scan(start, use_terrain)
+    st.plotly_chart(landing_calendar(scan), use_container_width=True)
+    no_site = int(scan.isna().all(axis=0).sum())
+    st.caption(f"Days when no candidate site works: {no_site} of {SCAN_DAYS}. "
+               "Having several sites is what keeps every launch date usable.")
 
-st.markdown("**What the terrain changes** (smooth sphere → real terrain)")
-effect = []
-for name, res in results.items():
-    mf, mt = res["m_flat"], res["m_terrain"]
-    effect.append({
-        "Site": name,
-        "Sunlight": f"{mf['sunlight_pct']:.0f}% → {mt['sunlight_pct']:.0f}%",
-        "Earth in view": f"{mf['earth_pct']:.0f}% → {mt['earth_pct']:.0f}%",
-        "Sun and Earth together": f"{mf['ops_pct']:.0f}% → {mt['ops_pct']:.0f}%",
-        "Longest darkness": f"{fmt_hours(mf['longest_dark_h'])} → {fmt_hours(mt['longest_dark_h'])}",
-    })
-st.dataframe(pd.DataFrame(effect).set_index("Site"), use_container_width=True)
-if use_terrain:
-    for name, res in results.items():
-        s = res["site"]
-        if s["id"] != lc.CUSTOM_ID:
-            continue
-        year_track = get_track(float(s["lat"]), float(s["lon"]), start, 365, 2)
-        u = custom_uncertainty(year_track, s["lat"], s["lon"])
-        if u is None:
-            continue
-        spread = max(u["sun"][1] - u["sun"][0], u["earth"][1] - u["earth"][0])
-        text = (f"Moving the custom point 250 m in any direction gives sunlight "
-                f"{u['sun'][0]:.0f}–{u['sun'][1]:.0f}% and Earth in view "
-                f"{u['earth'][0]:.0f}–{u['earth'][1]:.0f}% over the year from the start date.")
-        if spread > 15:
-            st.warning(f"**Custom site: position-sensitive terrain.** {text} Small ridges below "
-                       "the 240 m resolution of the coarse terrain may change these results.")
-        else:
-            st.caption(f"Custom site: results are stable nearby. {text}")
+    st.subheader(f"Landing windows at {name_a} and {name_b}")
+    st.caption("Stretches of continuous sunlight long enough for a 6.5-day stay within the selected period. "
+               "Landing any time between 'Land from' and 'Land by' keeps the site in sunlight for the whole "
+               "stay. 'Period edge' means the stretch continues beyond the selected dates.")
+    win_cols = st.columns(len(results))
+    for col, (name, res) in zip(win_cols, results.items()):
+        wins = res["m"]["mission_windows"]
+        with col:
+            st.markdown(f"**{name}**")
+            if not wins:
+                st.write("No sunlit stretch of 6.5 days or more in this period. "
+                         "Try a longer period or another start date.")
+                continue
+            st.dataframe(pd.DataFrame([{
+                "Land from": w["start"].strftime("%Y-%m-%d %H:%M"),
+                "Land by": w["land_by"].strftime("%Y-%m-%d %H:%M"),
+                "Sunlit for": fmt_hours(w["hours"]) + (" (period edge)" if w["cut_off"] else ""),
+                "Earth in view": f"{w['earth_pct']:.0f}%",
+                "Longest blackout": fmt_hours(w["blackout_h"]),
+            } for w in wins]), hide_index=True, use_container_width=True)
 
-st.subheader("Power and battery")
-st.caption(f"A vertical solar panel turning to face the Sun (the usual layout at the poles), "
-           f"{panel_m2:g} m² at {panel_eff:.0%} efficiency, powering a constant {load_w:.0f} W load. "
-           "Output counts only the part of the solar disc above the terrain. The battery must cover the "
-           "deepest dip in stored energy over the period, starting full. Change the numbers under "
-           "'Power assumptions' in the sidebar.")
-power_rows = {}
-for name, res in results.items():
-    pb = res["power"]
-    power_rows[name] = [
-        f"{pb['mean_w']:.0f} W",
-        f"{pb['kwh_per_day']:.1f} kWh",
-        f"{pb['mean_w'] / load_w:.1f}×",
-        f"{pb['battery_kwh']:.1f} kWh",
-        fmt_hours(pb["deficit_h"]),
+# ================================================================ tab 2: compare sites
+with tab_cmp:
+    st.subheader(f"{name_a} vs {name_b}")
+    st.caption(f"Over {days} days from {start:%Y-%m-%d}.")
+    rows = [
+        ("Sunlight", "sunlight_pct", "{:.1f}%"),
+        ("Highest solar elevation", "sun_elev_max", "{:.2f}°"),
+        ("Mean solar elevation while sunlit", "sun_elev_mean_up", "{:.2f}°"),
+        ("Earth in view", "earth_pct", "{:.1f}%"),
+        ("Sun and Earth together", "ops_pct", "{:.1f}%"),
+        ("Longest darkness", "longest_dark_h", None),
+        ("Longest communication blackout", "longest_blackout_h", None),
+        ("Longest continuous sunlight", "longest_sun_h", None),
     ]
-st.dataframe(pd.DataFrame(power_rows, index=[
-    "Average panel output", "Energy per day", "Average output ÷ load",
-    "Battery needed to keep the load running", "Longest stretch with output below load",
-]), use_container_width=True)
-st.plotly_chart(power_chart(results, load_w), use_container_width=True)
-st.subheader("Sun and Earth at a chosen moment")
-st.caption("Drag the time. The large star and dot mark where the Sun and Earth are right then; "
-           "the small dots trace their paths over the whole period. 'Above terrain' is how far the "
-           "top of each disc clears the local horizon: negative means hidden.")
-t0 = dt.datetime.combine(start, dt.time())
-when = st.slider("Time (UTC)", min_value=t0, max_value=t0 + dt.timedelta(days=days),
-                 value=t0, step=dt.timedelta(hours=step), format="YYYY-MM-DD HH:mm")
-idx = int(round((when - t0).total_seconds() / 3600 / step))
+    table = {}
+    for name, res in results.items():
+        m = res["m"]
+        col = [("—" if m[key] is None else fmt.format(m[key])) if fmt else fmt_hours(m[key])
+               for _, key, fmt in rows]
+        col.append(f"{len(m['mission_windows'])} window(s)")
+        table[name] = col
+    labels = [label for label, _, _ in rows] + ["Sunlit stretches ≥ 6.5 days"]
+    st.dataframe(pd.DataFrame(table, index=labels), use_container_width=True)
 
-cols = st.columns(2)
-for k, (col, name) in enumerate(zip(cols, (name_a, name_b))):
-    res = results[name]
-    s = res["site"]
-    now = lc.moment(res["df"], min(idx, len(res["df"]) - 1), step)
-    mask = site_mask(s) if use_terrain else FLAT_MASK
-    with col:
-        st.markdown(f"**{name}**  ·  {s['lat']:.4f}°, {s['lon']:.4f}°  ·  {s['group']}")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Solar elevation", f"{now['sun_alt']:.2f}°")
-        c2.metric("Sun above terrain", f"{now['sun_margin']:+.2f}°")
-        c3.metric("Sunset in" if now["sun_now"] else "Sunrise in", fmt_hours(now["sun_change_h"]))
-        c1.metric("Earth elevation", f"{now['earth_alt']:.2f}°")
-        c2.metric("Earth above terrain", f"{now['earth_margin']:+.2f}°")
-        c3.metric("Earthset in" if now["earth_now"] else "Earthrise in", fmt_hours(now["earth_change_h"]))
-        tab_sky, tab_pan, tab_3d = st.tabs(["Sky view", "Panorama", "3D terrain"])
-        with tab_sky:
-            st.plotly_chart(sky_dome(mask, res["df"], name, use_terrain, now),
-                            use_container_width=True, key=f"dome_{k}")
-        with tab_pan:
-            st.plotly_chart(panorama(mask, res["df"], name, use_terrain,
-                                     min(idx, len(res["df"]) - 1)),
-                            use_container_width=True, key=f"pano_{k}")
-            st.caption("What you would see turning a full circle at the site, north in the middle. "
-                       "Press ▶ Play to run the Sun and Earth through the selected period.")
-        with tab_3d:
-            t3 = site_terrain3d(s)
-            if t3 is None:
-                st.write("No 3D terrain for this site.")
+    if use_terrain:
+        for name, res in results.items():
+            s = res["site"]
+            if s["id"] != lc.CUSTOM_ID:
+                continue
+            year_track = get_track(float(s["lat"]), float(s["lon"]), start, 365, 2)
+            u = custom_uncertainty(year_track, s["lat"], s["lon"])
+            if u is None:
+                continue
+            spread = max(u["sun"][1] - u["sun"][0], u["earth"][1] - u["earth"][0])
+            text = (f"Moving the custom point 250 m in any direction gives sunlight "
+                    f"{u['sun'][0]:.0f}–{u['sun'][1]:.0f}% and Earth in view "
+                    f"{u['earth'][0]:.0f}–{u['earth'][1]:.0f}% over the year from the start date.")
+            if spread > 15:
+                st.warning(f"**Custom site: position-sensitive terrain.** {text} Small ridges below "
+                           "the 240 m resolution of the coarse terrain may change these results.")
             else:
+                st.caption(f"Custom site: results are stable nearby. {text}")
+
+    with st.expander("What the terrain changes (smooth sphere → real terrain)"):
+        effect = []
+        for name, res in results.items():
+            mf, mt = res["m_flat"], res["m_terrain"]
+            effect.append({
+                "Site": name,
+                "Sunlight": f"{mf['sunlight_pct']:.0f}% → {mt['sunlight_pct']:.0f}%",
+                "Earth in view": f"{mf['earth_pct']:.0f}% → {mt['earth_pct']:.0f}%",
+                "Sun and Earth together": f"{mf['ops_pct']:.0f}% → {mt['ops_pct']:.0f}%",
+                "Longest darkness": f"{fmt_hours(mf['longest_dark_h'])} → {fmt_hours(mt['longest_dark_h'])}",
+            })
+        st.dataframe(pd.DataFrame(effect).set_index("Site"), use_container_width=True)
+        st.caption("Terrain can hide the Sun and Earth, but on a high peak it also lets you see past "
+                   "the flat horizon, so the change can go either way.")
+
+    st.subheader("Power and battery")
+    st.caption(f"A vertical solar panel turning to face the Sun (the usual layout at the poles), "
+               f"{panel_m2:g} m² at {panel_eff:.0%} efficiency, powering a constant {load_w:.0f} W load. "
+               "Output counts only the part of the solar disc above the terrain. The battery must cover the "
+               "deepest dip in stored energy over the period, starting full. Change the numbers under "
+               "'Power assumptions' in the sidebar.")
+    power_rows = {}
+    for name, res in results.items():
+        pb = res["power"]
+        power_rows[name] = [
+            f"{pb['mean_w']:.0f} W",
+            f"{pb['kwh_per_day']:.1f} kWh",
+            f"{pb['mean_w'] / load_w:.1f}×",
+            f"{pb['battery_kwh']:.1f} kWh",
+            fmt_hours(pb["deficit_h"]),
+        ]
+    st.dataframe(pd.DataFrame(power_rows, index=[
+        "Average panel output", "Energy per day", "Average output ÷ load",
+        "Battery needed to keep the load running", "Longest stretch with output below load",
+    ]), use_container_width=True)
+    st.plotly_chart(power_chart(results, load_w), use_container_width=True)
+
+# ================================================================ tab 3: Sun & Earth view
+with tab_view:
+    st.caption("Drag the time. Metrics and views below follow it. 'Above terrain' is how far the top "
+               "of each disc clears the local horizon: negative means hidden.")
+    t0 = dt.datetime.combine(start, dt.time())
+    when = st.slider("Time (UTC)", min_value=t0, max_value=t0 + dt.timedelta(days=days),
+                     value=t0, step=dt.timedelta(hours=step), format="YYYY-MM-DD HH:mm")
+    idx = int(round((when - t0).total_seconds() / 3600 / step))
+
+    cols = st.columns(2)
+    for k, (col, name) in enumerate(zip(cols, (name_a, name_b))):
+        res = results[name]
+        s = res["site"]
+        now = lc.moment(res["df"], min(idx, len(res["df"]) - 1), step)
+        mask = site_mask(s) if use_terrain else FLAT_MASK
+        with col:
+            st.markdown(f"**{name}**  ·  {s['lat']:.4f}°, {s['lon']:.4f}°  ·  {s['group']}")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Solar elevation", f"{now['sun_alt']:.2f}°")
+            c2.metric("Sun above terrain", f"{now['sun_margin']:+.2f}°")
+            c3.metric("Sunset in" if now["sun_now"] else "Sunrise in", fmt_hours(now["sun_change_h"]))
+            c1.metric("Earth elevation", f"{now['earth_alt']:.2f}°")
+            c2.metric("Earth above terrain", f"{now['earth_margin']:+.2f}°")
+            c3.metric("Earthset in" if now["earth_now"] else "Earthrise in",
+                      fmt_hours(now["earth_change_h"]))
+            tab_sky, tab_pan, tab_3d = st.tabs(["Sky view", "Panorama", "3D terrain"])
+            with tab_sky:
+                st.plotly_chart(sky_dome(mask, res["df"], name, use_terrain, now),
+                                use_container_width=True, key=f"dome_{k}")
+                st.caption("Grey: terrain. Dotted ring: flat horizon. Faint dots: Sun or Earth hidden by terrain.")
+            with tab_pan:
+                st.plotly_chart(panorama(mask, res["df"], name, use_terrain,
+                                         min(idx, len(res["df"]) - 1)),
+                                use_container_width=True, key=f"pano_{k}")
+                st.caption("What you would see turning a full circle at the site, north in the middle. "
+                           "Press ▶ Play to run the Sun and Earth through the selected period.")
+            with tab_3d:
+                t3 = site_terrain3d(s)
+                if t3 is None:
+                    st.write("No 3D terrain for this site.")
+                    continue
                 ill = get_illum3d(s["id"]) if s["id"] != lc.CUSTOM_ID else None
                 modes = ["Shadows now"]
                 if ill is not None:
@@ -673,14 +716,9 @@ for k, (col, name) in enumerate(zip(cols, (name_a, name_b))):
                                f"{'sunlit' if mask_lit else 'shadow'} ({agree}).")
                 else:
                     is_sun = mode.startswith("Long-term sunlight")
-                    inferno = [[0, "#16121E"], [0.1, "#1B0C41"], [0.2, "#4A0C6B"], [0.3, "#781C6D"],
-                               [0.4, "#A52C60"], [0.5, "#CF4446"], [0.6, "#ED6925"], [0.7, "#FB9B06"],
-                               [0.85, "#F7D13D"], [1, "#FCFFA4"]]
-                    viridis = [[0, "#0E1A2B"], [0.25, "#1F3F6B"], [0.5, "#2F6FB5"],
-                               [0.75, "#7FA8DA"], [1, "#E8F1FB"]]
                     overlay = (ill["sun"] if is_sun else ill["earth"],
                                "Sunlit" if is_sun else "Earth in view",
-                               inferno if is_sun else viridis)
+                               SUN_SCALE if is_sun else EARTH_SCALE)
                     st.plotly_chart(terrain_3d(t3, now, name, overlay=overlay),
                                     use_container_width=True, key=f"terrain_{k}", theme=None)
                     st.caption("Colour: share of time over 18.6 years that each spot sees "
@@ -688,58 +726,42 @@ for k, (col, name) in enumerate(zip(cols, (name_a, name_b))):
                                "(NASA LOLA average visibility maps, Mazarico et al. 2011). "
                                "Red dot: landing site.")
 
-st.subheader("Artemis III landing windows")
-st.caption("Stretches of continuous sunlight long enough for a 6.5-day surface stay. "
-           "Landing any time between 'Land from' and 'Land by' keeps the site in sunlight "
-           "for the whole stay. 'Period edge' means the stretch continues beyond the selected dates.")
-win_cols = st.columns(len(results))
-for col, (name, res) in zip(win_cols, results.items()):
-    wins = res["m"]["mission_windows"]
-    with col:
-        st.markdown(f"**{name}**")
-        if not wins:
-            st.write("No sunlit stretch of 6.5 days or more in this period. "
-                     "Try a longer period or another start date.")
-            continue
-        st.dataframe(pd.DataFrame([{
-            "Land from": w["start"].strftime("%Y-%m-%d %H:%M"),
-            "Land by": w["land_by"].strftime("%Y-%m-%d %H:%M"),
-            "Sunlit for": fmt_hours(w["hours"]) + (" (period edge)" if w["cut_off"] else ""),
-            "Earth in view": f"{w['earth_pct']:.0f}%",
-            "Longest blackout": fmt_hours(w["blackout_h"]),
-        } for w in wins]), hide_index=True, use_container_width=True)
+    st.subheader("When are the Sun and Earth above the horizon?")
+    st.caption("Above zero means at least part of the disc clears the local horizon. "
+               "The vertical line is the time chosen above.")
+    st.plotly_chart(timeline(results[name_a]["df"], results[name_b]["df"], name_a, name_b, when),
+                    use_container_width=True)
 
-st.subheader("How much does a 100 m landing error matter?")
-st.caption("Artemis III aims to land within about 100 m of its target. Each circle is a point "
-           "100 m or 200 m from the site centre, coloured by the chosen metric over the selected "
-           "period. The dotted ring marks 100 m.")
-if not use_terrain:
-    st.info("Turn terrain on to see this: on a smooth sphere every nearby point looks the same.")
-else:
-    metric_options = {"Earth in view": "earth_pct", "Sunlight": "sunlight_pct",
-                      "Sun and Earth together": "ops_pct"}
-    metric_label = st.radio("Metric", list(metric_options), horizontal=True)
-    key = metric_options[metric_label]
-    sens_cols = st.columns(len(results))
-    for col, (name, res) in zip(sens_cols, results.items()):
-        offsets = get_offsets(res["site"]["id"])
-        with col:
-            st.markdown(f"**{name}**")
-            if offsets is None:
-                st.write("No offset data for this site.")
-                continue
-            sens = lc.sensitivity(res["track"], offsets)
-            st.plotly_chart(sensitivity_map(sens, key, metric_label), use_container_width=True)
-            r = np.hypot(sens["east_m"], sens["north_m"])
-            near = sens.loc[r <= 100.5, key]
-            st.caption(f"{metric_label} within 100 m: {near.min():.0f}–{near.max():.0f}%. "
-                       f"Within 200 m: {sens[key].min():.0f}–{sens[key].max():.0f}%.")
+# ================================================================ tab 4: 100 m sensitivity
+with tab_sens:
+    st.subheader("How much does a 100 m landing error matter?")
+    st.caption("Artemis III aims to land within about 100 m of its target. Each circle is a point "
+               "100 m or 200 m from the site centre, coloured by the chosen metric over the selected "
+               "period. The dotted ring marks 100 m.")
+    if not use_terrain:
+        st.info("Turn terrain on to see this: on a smooth sphere every nearby point looks the same.")
+    else:
+        metric_options = {"Earth in view": "earth_pct", "Sunlight": "sunlight_pct",
+                          "Sun and Earth together": "ops_pct"}
+        metric_label = st.radio("Metric", list(metric_options), horizontal=True)
+        key = metric_options[metric_label]
+        sens_cols = st.columns(len(results))
+        for col, (name, res) in zip(sens_cols, results.items()):
+            offsets = get_offsets(res["site"]["id"])
+            with col:
+                st.markdown(f"**{name}**")
+                if offsets is None:
+                    st.write("No offset data for this site.")
+                    continue
+                sens = lc.sensitivity(res["track"], offsets)
+                st.plotly_chart(sensitivity_map(sens, key, metric_label), use_container_width=True)
+                r = np.hypot(sens["east_m"], sens["north_m"])
+                near = sens.loc[r <= 100.5, key]
+                st.caption(f"{metric_label} within 100 m: {near.min():.0f}–{near.max():.0f}%. "
+                           f"Within 200 m: {sens[key].min():.0f}–{sens[key].max():.0f}%.")
 
-st.subheader("When are the Sun and Earth above the horizon?")
-st.caption("Above zero means at least part of the disc clears the local horizon.")
-st.plotly_chart(timeline(results[name_a]["df"], results[name_b]["df"], name_a, name_b, when),
-                use_container_width=True)
-
+# ================================================================ method
+st.divider()
 with st.expander("Method, validation and references"):
     st.markdown("""
 **Method.** Sun and Earth positions are computed with Skyfield using the JPL DE421 ephemeris
@@ -749,21 +771,31 @@ Each site has a 360° terrain horizon built from LOLA elevation models (80 m/px 
 of its disc clears that horizon.
 
 **Validation.** Sun and Earth positions were checked against the JPL Horizons API at all six
-sites for every day of 2027 (4,392 comparisons); the largest difference is 0.000013°.
+Artemis III sites for every day of 2027 (4,392 comparisons); the largest difference is 0.000013°.
 Over an 18.6-year period, sunlight fractions at the six sites are within 4 percentage points
-of NASA's LOLA average illumination maps.
+of NASA's LOLA average illumination maps. The IM-1 landing-site height (2,592 m) matches LROC
+(2,579 m); predicted local sunset at Chandrayaan-3 (about 4 Sep 2023) matches when ISRO put the
+lander to sleep; Sun and Earth elevations at the Apollo 11 landing match the Apollo Lunar Surface
+Journal within 0.2°. Full results: docs/validation.md in the repository.
 
 **Site coordinates.** For each NASA Artemis III candidate region, the point with the highest
 long-term average illumination inside the region. Past landings use published landing
 coordinates. Chandrayaan-3 lies outside the 80 m terrain model, so its horizon uses 240 m
-terrain only and has no 100 m offset analysis.
+terrain only and has no 100 m offset analysis. Apollo 11 lies outside the polar terrain models
+and is treated as a smooth sphere.
 
 **Custom coordinates.** Any point can be entered. Its horizon is built the same way on a
 down-sampled copy of the LOLA terrain (240 m south of 80°S, 960 m to 60°S); north of 60°S
 the Moon is treated as a smooth sphere. Tested on the nine listed sites over 2027, sunlight
 from the coarse terrain is within 1 percentage point of the full-resolution result and Earth
 visibility within 1.5 points, except on the sharp Malapert ridge (88% vs 100%), where hills
-smaller than 240 m decide when Earth is hidden.
+smaller than 240 m decide when Earth is hidden. The app warns when results vary strongly
+within 250 m of a custom point.
+
+**3D view.** Cast shadows are traced toward the Sun across the 20 × 20 km terrain and, beyond it,
+coarse terrain out to 100 km. They agree with the horizon mask on whether the site is lit.
+Long-term colours use NASA's 120 m average visibility maps; the 60 m maps differ by up to
+20 percentage points on narrow ridges, and the 120 m maps also match how sites were chosen.
 
 **Power.** Panel output = 1361 W/m² × area × efficiency × cos(solar elevation) × the visible
 fraction of the solar disc (circular segment above the local horizon). Battery size is the largest
@@ -781,6 +813,7 @@ terrain alone. The 80 m/px terrain model limits detail at this scale.
 - Mazarico, E. et al. (2011). Illumination conditions of the lunar polar regions using LOLA topography. Icarus 211, 1066–1081. Average illumination maps via NASA GSFC PGDA: https://pgda.gsfc.nasa.gov/products/69
 - NASA (2022, 2024). Artemis III candidate landing regions.
 - Artemis III candidate landing region boundaries (2022), accessed via LROC QuickMap, NASA/GSFC/Arizona State University. https://quickmap.im-ldi.com
-- Landing coordinates: IM-2 Athena, NAIF CLPS IM-2 frame kernel (clps_prime1_im2_v01.tf); IM-1 Odysseus, LROC Featured Image 1360; Chandrayaan-3 Vikram, LROC Featured Image 1314 and QuickMap landing-site feature (NASA/GSFC/Arizona State University).
+- Landing coordinates: IM-2 Athena, NAIF CLPS IM-2 frame kernel (clps_prime1_im2_v01.tf); IM-1 Odysseus, LROC Featured Image 1360; Chandrayaan-3 Vikram, LROC Featured Image 1314 and QuickMap landing-site feature; Apollo 11, NSSDCA (Wagner et al. 2017).
+- Apollo Lunar Surface Journal, NASA: Sun and Earth positions at the Apollo 11 landing.
 - Robinson, M. S. et al. (2010). Lunar Reconnaissance Orbiter Camera (LROC) Instrument Overview. Space Science Reviews 150, 81–124.
 """)

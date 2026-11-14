@@ -1,0 +1,5 @@
+id,name,lat,lon,landed,source
+im2,IM-2 Athena (2025),-84.79059,29.19567,2025-03-06,NAIF CLPS IM-2 frame kernel (clps_prime1_im2_v01.tf)
+im1,IM-1 Odysseus (2024),-80.13,1.44,2024-02-22,LROC Featured Image 1360 (NASA/GSFC/ASU)
+chandrayaan3,Chandrayaan-3 Vikram (2023),-69.373025,32.319005,2023-08-23,LROC QuickMap landing-site feature (NASA/GSFC/ASU)
+apollo11,Apollo 11 Eagle (1969),0.67416,23.47314,1969-07-20,NSSDCA Apollo landing site coordinates (LROC; Wagner et al. 2017)

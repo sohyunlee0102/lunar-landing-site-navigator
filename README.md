@@ -3,13 +3,13 @@
 **Live app:** https://lunar-landing-navigator.streamlit.app/
 *(If the app has gone to sleep, press "Yes, get this app back up" and allow about a minute.)*
 
-A tool for comparing lunar south pole landing sites and dates quickly. It shows where the Sun and Earth sit relative to the real local horizon, how long each stays up, and what that means for solar power, batteries and direct-to-Earth communication.
+A tool for mission planners, educators and the public to compare lunar south pole landing sites and dates quickly. It shows where the Sun and Earth sit relative to the real local horizon, how long each stays up, and what that means for solar power, batteries and direct-to-Earth communication. NASA's Artemis III candidate regions serve as a reference set of real south pole sites; any mission can set its own surface stay or enter its own coordinates.
 
 Built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*.
 
 ## What it does
 
-- **Landing calendar.** For every day of a year, which Artemis III candidate site gives 6.5 days of continuous sunlight (the planned surface stay), and how much of that stay Earth is in view.
+- **Landing calendar.** For every day of a year, which candidate site gives continuous sunlight for your mission's surface stay (default 6.5 days, the Artemis III plan), and how much of that stay Earth is in view.
 - **Side-by-side comparison** of any two sites: sunlight, solar elevation, Earth visibility, longest darkness and communication blackout, landing windows.
 - **A chosen moment.** Drag through time to see solar and Earth elevation, how far each clears the terrain, and how long until sunset or Earthset.
 - **Sky view, horizon panorama (with ▶ animation) and 3D terrain** with cast shadows, plus NASA's 18.6-year sunlight and Earth-visibility maps draped over the terrain.
@@ -20,7 +20,7 @@ Built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*.
 
 ## What we found
 
-- **No single site works year-round.** In 2027 each Artemis III candidate gives a 6.5-day sunlit stay on 124–278 days. Together they leave only 19 days with no option, which is why NASA keeps several regions.
+- **No single site works year-round.** For the 6.5-day Artemis III stay in 2027, each candidate region works on 124–278 days. Together they leave only 19 days with no option, which is why NASA keeps several regions.
 - **100 m decides Earth contact on ridges.** At Malapert Massif, landing 100 m north keeps Earth in view all the time; 100 m south cuts that roughly in half. NASA's own visibility map shows the same pattern.
 - **Terrain cuts both ways.** A crater floor at 88°S that looks 29% operable on a smooth sphere is never sunlit. High ridges see below the flat horizon and gain Sun and Earth time.
 - **Grazing sunlight is not power.** A few hours of Sun peeking through a notch can split a 3-day darkness in two on paper, but barely recharges a battery. Sizing by energy balance catches this.

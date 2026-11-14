@@ -92,7 +92,7 @@ def get_track(lat, lon, start, days, step):
 def get_scan(start, use_terrain):
     rows = {}
     for s in get_sites().itertuples():
-        if s.lat > -60:                      # the calendar is for south polar sites
+        if s.group != "Artemis III candidate region":   # the calendar compares Artemis III candidates
             continue
         track = get_track(float(s.lat), float(s.lon), start, SCAN_DAYS + 7, SCAN_STEP)
         mask = get_mask(s.id) if use_terrain else FLAT_MASK

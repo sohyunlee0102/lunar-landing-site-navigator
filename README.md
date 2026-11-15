@@ -14,8 +14,8 @@ Built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*.
 - **A chosen moment.** Drag through time to see solar and Earth elevation, how far each clears the terrain, and how long until sunset or Earthset.
 - **Sky view, horizon panorama (with ▶ animation) and 3D terrain** with cast shadows, plus NASA's 18.6-year sunlight and Earth-visibility maps draped over the terrain.
 - **Power and battery.** Output of a vertical Sun-tracking panel and the battery a constant load needs, sized by energy balance.
-- **How much does 100 m matter?** Results at 16 points 100 m and 200 m around each site, matching Artemis III's landing accuracy.
-- **Sites:** six Artemis III candidate regions, past landings (IM-1, IM-2, Chandrayaan-3, Apollo 11), or any custom coordinates.
+- **How much does 100 m matter?** Results at 16 points 100 m and 200 m around each site, matching the landing accuracy of precision landers such as Artemis III.
+- **Sites:** NASA's Artemis III candidate regions, past landings (IM-1, IM-2, Chandrayaan-3, Apollo 11), or any custom coordinates.
 - **Terrain on/off** to show what a smooth-sphere calculation gets wrong.
 
 ## What we found
@@ -31,6 +31,7 @@ Built for the 2026 NASA Space Apps Challenge, *Lunar Landing Site Navigator*.
 - **Horizon:** for each site, the highest terrain angle in each of 360 directions out to 150 km, from LOLA elevation models (80 m near field, 240 m far field), corrected for lunar curvature.
 - **Visibility:** a body counts as visible when any part of its disc clears the horizon, the same rule as NASA's LOLA illumination maps.
 - **Site coordinates:** within each Artemis III candidate region, the point with the highest long-term average sunlight. Past landings use published coordinates.
+- **Surface stay:** landing windows and the calendar use a user-set stay length (default 6.5 days, the Artemis III plan).
 - **Power:** 1361 W/m² × area × efficiency × cos(solar elevation) × the visible fraction of the solar disc.
 - **Custom coordinates:** the same horizon method on a down-sampled terrain model shipped with the app (240 m south of 80°S, 960 m to 60°S, smooth sphere further north).
 
@@ -53,7 +54,7 @@ Reproduce the Horizons check with `python scripts/validate_horizons.py`.
 
 ## Limitations
 
-- Terrain detail below 80 m is not modelled, so the 100 m analysis is approximate on sharp ridges.
+- Horizons use 80 m terrain near each site. Recomputing them with the 20 m LOLA model out to 15 km changes the horizon by 0.01–0.12° on average at most sites, but by 0.62° on average (up to 2°) on the narrow Malapert ridge, so results there are the least certain.
 - Custom coordinates use coarser terrain. On the sharp Malapert ridge this gives 100% Earth visibility against 88% at full resolution; the app warns when results vary strongly within 250 m.
 - NASA's 60 m and 120 m average illumination maps differ by up to 20 percentage points on narrow ridges. Site selection and 3D colouring use the 120 m map consistently.
 - 3D shadows are computed on a 200 m grid and do not model the solar disc's partial occlusion.
@@ -90,6 +91,7 @@ The precomputed assets were generated offline from the LOLA DEMs listed below.
 - NASA (2022, 2024). Artemis III candidate landing regions. Region boundaries accessed via LROC QuickMap, NASA/GSFC/Arizona State University. https://quickmap.im-ldi.com
 - Robinson, M. S. et al. (2010). Lunar Reconnaissance Orbiter Camera (LROC) Instrument Overview. *Space Science Reviews* 150, 81–124.
 - Landing coordinates: IM-2 (NAIF CLPS frame kernel), IM-1 and Chandrayaan-3 (LROC), Apollo 11 (NSSDCA, Wagner et al. 2017).
+- ISRO: Chandrayaan-3 mission timeline (landing 23 Aug 2023; rover and lander put to sleep on 2 and 4 Sep 2023).
 - Apollo 11 Sun and Earth positions at landing: Apollo Lunar Surface Journal, NASA.
 
 ## Third-party software and data licenses
@@ -105,6 +107,10 @@ The precomputed assets were generated offline from the LOLA DEMs listed below.
 | JPL DE421 ephemeris and lunar frame kernels | Planetary positions | NASA/JPL data, publicly available |
 | LOLA DEMs and average illumination maps (NASA GSFC PGDA) | Terrain and validation | NASA data, publicly available |
 | Artemis III candidate region boundaries via LROC QuickMap | Site selection | NASA/GSFC/Arizona State University; used with credit under LROC's terms for non-commercial use |
+
+## Use of AI (Super Intelligence)
+
+Claude (Anthropic), a large language model, was used throughout this project to help plan the technical approach, write and debug Python code and draft documentation. All calculations were run and checked by the author, and results were validated against independent sources (JPL Horizons, NASA LOLA illumination maps and published mission data) as documented in docs/validation.md. No AI-generated images, video or audio are used.
 
 ## License
 

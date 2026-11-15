@@ -1,3 +1,5 @@
+# Developed with the assistance of Claude (Anthropic), an AI assistant. See README, "Use of AI".
+
 import datetime as dt
 
 import numpy as np

@@ -1,3 +1,5 @@
+# Developed with the assistance of Claude (Anthropic), an AI assistant. See README, "Use of AI".
+
 """Core calculations for the Lunar Landing Site Navigator.
 
 Sun and Earth positions come from Skyfield (JPL DE421, MOON_ME_DE421 frame).

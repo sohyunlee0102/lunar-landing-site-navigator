@@ -1,3 +1,5 @@
+# Developed with the assistance of Claude (Anthropic), an AI assistant. See README, "Use of AI".
+
 """How much does the coarse terrain used for custom coordinates differ from the
 full-resolution masks? Runs every listed site through both and compares one year.
 
